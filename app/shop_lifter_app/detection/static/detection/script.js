@@ -24,4 +24,3 @@ document.getElementById("uploadForm").addEventListener("submit", async function(
 
     resultBox.classList.remove("d-none");
 });
-

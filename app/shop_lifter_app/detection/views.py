@@ -48,18 +48,19 @@ def upload_video(request):
         fs = FileSystemStorage(location="media/uploads")
         filename = fs.save(video.name, video)
         file_path = fs.path(filename)  # full path to file
+        video_url = fs.url(filename)
 
         # === Extract frames and predict ===
         frames = frames_from_video_file(file_path, n_frames=10, frame_step=15)
         prob = predict(frames)
         label = "Shoplifter" if prob > 0.5 else "Non-Shoplifter"
 
-        return HttpResponse(
-            f"✅ Uploaded successfully!<br>"
-            f"🤖 Prediction: {label} (probability={prob:.2f})"
-        )
+        return render(request, "detection/result.html", {
+            "video_url": video_url,
+            "label": label,
+            "prob": round(prob, 2),
+        })
 
     return render(request, "detection/upload.html")
-
 
 

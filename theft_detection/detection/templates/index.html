@@ -11,15 +11,21 @@
 <div class="container mt-5">
     <div class="card shadow p-4 rounded">
         <h2 class="text-center mb-4">🚨 Theft Detection System</h2>
-        <form method="post" enctype="multipart/form-data" action="/predict/">
+        <form method="post" enctype="multipart/form-data" action="{% url 'upload_video' %}">
             {% csrf_token %}
             <div class="mb-3">
-                <input type="file" classvenv\Scripts\="form-control" name="file" required>
+                <input type="file" class="form-control" name="video" required>
             </div>
             <div class="d-grid">
                 <button type="submit" class="btn btn-primary btn-lg">Detect</button>
             </div>
         </form>
+
+        {% if result %}
+            <div class="alert alert-info mt-3">
+                <strong>Prediction:</strong> {{ result }}
+            </div>
+        {% endif %}
     </div>
 </div>
 
