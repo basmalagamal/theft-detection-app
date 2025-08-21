@@ -1,71 +1,43 @@
+# views.py
 import os
-import cv2
 import numpy as np
 from django.shortcuts import render
-from django.core.files.storage import FileSystemStorage
 from django.conf import settings
-from tensorflow.keras.models import load_model
+import tensorflow as tf
+from .preprocess import frames_from_video_file
 
-# ------------------ PARAMETERS ------------------
-HEIGHT, WIDTH = 224, 224
+# Load your model once
+MODEL_PATH = os.path.join(settings.BASE_DIR, "detection/model/theft_model.h5")
+model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+
 N_FRAMES = 10
-FRAME_STEP = 15  # same as training
-MODEL_PATH = os.path.join(settings.BASE_DIR, "detection/models/model.h5")
+OUTPUT_SIZE = (224, 224)
 
-# ------------------ LOAD MODEL ------------------
-# Load the flexible model (any number of frames allowed)
-model = load_model(MODEL_PATH, compile=False)
-
-# ------------------ VIDEO PREPROCESSING ------------------
-def preprocess_video(video_path, n_frames=N_FRAMES, frame_step=FRAME_STEP, img_size=(HEIGHT, WIDTH)):
-    """Extract frames from video and preprocess for the model."""
-    frames = []
-    cap = cv2.VideoCapture(video_path)
-    i = 0
-    while len(frames) < n_frames and cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        if i % frame_step == 0:
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame = cv2.resize(frame, img_size)
-            frame = frame / 255.0  # normalize
-            frames.append(frame)
-        i += 1
-    cap.release()
-
-    # Pad with last frame if fewer than n_frames
-    while len(frames) < n_frames:
-        frames.append(frames[-1])
-
-    video_array = np.array(frames, dtype="float32")
-    video_array = np.expand_dims(video_array, axis=0)  # shape: (1, n_frames, H, W, 3)
-    return video_array
-
-# ------------------ VIEWS ------------------
-def index(request):
-    """Render the homepage with upload form."""
-    return render(request, "index.html")
-
-def predict_video(request):
-    """Handle video upload, preprocess, predict, and show result."""
+def predict_theft(request):
     context = {}
-    if request.method == "POST" and request.FILES.get("file"):
-        video_file = request.FILES["file"]
-        fs = FileSystemStorage()
-        filename = fs.save(video_file.name, video_file)
-        video_path = fs.path(filename)
+    
+    if request.method == 'POST' and request.FILES.get('video'):
+        video_file = request.FILES['video']
+
+        temp_path = os.path.join(settings.MEDIA_ROOT, video_file.name)
+        with open(temp_path, 'wb+') as f:
+            for chunk in video_file.chunks():
+                f.write(chunk)
 
         # Preprocess video
-        input_data = preprocess_video(video_path)
+        frames = frames_from_video_file(temp_path, num_frames=N_FRAMES, output_size=OUTPUT_SIZE)
+        frames = frames.astype('float32') / 255.0
+
+        # Force shape: (1, N_FRAMES, 224,224,3)
+        video_batch = np.expand_dims(frames, axis=0)
 
         # Predict
-        pred = model.predict(input_data)[0][0]
-        label = "Shoplifter" if pred > 0.5 else "Non-shoplifter"
+        pred_probs = model.predict(video_batch)
+        pred_class = np.argmax(pred_probs, axis=1)[0]
 
-        context["label"] = label
-        fs.delete(filename)  # optional: delete video after prediction
+        labels = {0: 'No Theft', 1: 'Theft'}
+        context['prediction'] = labels.get(pred_class, 'Unknown')
 
-        return render(request, "result.html", context)
+        os.remove(temp_path)
 
-    return render(request, "index.html")
+    return render(request, 'detection/predict.html', context)
